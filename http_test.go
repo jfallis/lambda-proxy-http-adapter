@@ -13,7 +13,7 @@ import (
 )
 
 func TestGetHttpHandler(t *testing.T) {
-	handler := func(r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	handler := func(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 		assert.Equal(t, "POST", r.HTTPMethod)
 		assert.Equal(t, "/users/123", r.Path)
 		assert.Equal(t, "123", r.PathParameters["userId"])
@@ -24,7 +24,7 @@ func TestGetHttpHandler(t *testing.T) {
 		assert.Equal(t, "req_body", r.Body)
 		assert.Equal(t, "varValue1", r.StageVariables["var1"])
 
-		return events.APIGatewayProxyResponse{
+		return &events.APIGatewayProxyResponse{
 			StatusCode: http.StatusOK,
 			Headers: map[string]string{
 				"Single-Value-Key": "single_value",
@@ -56,7 +56,7 @@ func TestGetHttpHandler(t *testing.T) {
 }
 
 func TestGetHttpHandlerWithContext(t *testing.T) {
-	handler := func(ctx context.Context, r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	handler := func(ctx context.Context, r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 		assert.Equal(t, "POST", r.HTTPMethod)
 		assert.Equal(t, "/users/123", r.Path)
 		assert.Equal(t, "123", r.PathParameters["userId"])
@@ -67,7 +67,7 @@ func TestGetHttpHandlerWithContext(t *testing.T) {
 		assert.Equal(t, "req_body", r.Body)
 		assert.Equal(t, "varValue1", r.StageVariables["var1"])
 
-		return events.APIGatewayProxyResponse{
+		return &events.APIGatewayProxyResponse{
 			StatusCode: http.StatusOK,
 			Headers: map[string]string{
 				"Single-Value-Key": "single_value",
@@ -99,8 +99,8 @@ func TestGetHttpHandlerWithContext(t *testing.T) {
 }
 
 func TestGetHttpHandler_Error(t *testing.T) {
-	handler := func(r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-		return events.APIGatewayProxyResponse{}, assert.AnError
+	handler := func(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+		return &events.APIGatewayProxyResponse{}, assert.AnError
 	}
 
 	httpHandler := GetHttpHandler(handler, "/", nil)

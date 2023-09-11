@@ -9,19 +9,19 @@ import (
 	"github.com/gorilla/reverse"
 )
 
-type APIGatewayProxyHandler func(r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
+type APIGatewayProxyHandler func(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error)
 
 func GetHttpHandler(
 	lambdaHandler APIGatewayProxyHandler,
 	resourcePathPattern string,
 	stageVariables map[string]string,
 ) http.Handler {
-	return getHttpHandler(func(ctx context.Context, r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	return getHttpHandler(func(ctx context.Context, r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 		return lambdaHandler(r)
 	}, resourcePathPattern, stageVariables)
 }
 
-type APIGatewayProxyHandlerWithContext func(ctx context.Context, r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
+type APIGatewayProxyHandlerWithContext func(ctx context.Context, r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error)
 
 func GetHttpHandlerWithContext(
 	lambdaHandler APIGatewayProxyHandlerWithContext,
@@ -62,7 +62,7 @@ func getHttpHandler(
 			return
 		}
 
-		writeResponse(w, proxyResponse)
+		writeResponse(w, *proxyResponse)
 	})
 }
 
