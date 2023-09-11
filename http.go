@@ -62,7 +62,7 @@ func getHttpHandler(
 			return
 		}
 
-		writeResponse(w, *proxyResponse)
+		writeResponse(w, proxyResponse)
 	})
 }
 
@@ -94,7 +94,7 @@ func parsePathParams(pathPattern string, path string) map[string]string {
 	return params
 }
 
-func writeResponse(w http.ResponseWriter, proxyResponse events.APIGatewayProxyResponse) {
+func writeResponse(w http.ResponseWriter, proxyResponse *events.APIGatewayProxyResponse) {
 	for k, v := range proxyResponse.Headers {
 		w.Header().Add(k, v)
 	}

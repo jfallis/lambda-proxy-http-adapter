@@ -25,7 +25,7 @@ func main() {
 	...
 }
 
-func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 	...
 }
 ```
@@ -49,7 +49,7 @@ func main() {
 	...
 }
 
-func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 	...
 }
 ```
@@ -72,7 +72,7 @@ func main() {
 	...
 }
 
-func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
 	...
 }
 ```
