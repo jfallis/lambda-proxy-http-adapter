@@ -1,124 +1,129 @@
-package lambda_proxy_http_adapter
+package lambdaproxyhttpadapter_test
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	adapter "github.com/jfallis/lambda-proxy-http-adapter"
+
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetHttpHandler(t *testing.T) {
-	handler := func(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
-		assert.Equal(t, "POST", r.HTTPMethod)
-		assert.Equal(t, "/users/123", r.Path)
-		assert.Equal(t, "123", r.PathParameters["userId"])
-		assert.Equal(t, "123", r.QueryStringParameters["abc"])
-		assert.Equal(t, "123", r.MultiValueQueryStringParameters["abc"][0])
-		assert.Equal(t, "application/json", r.Headers["Content-Type"])
-		assert.Equal(t, "application/json", r.MultiValueHeaders["Content-Type"][0])
-		assert.Equal(t, "req_body", r.Body)
-		assert.Equal(t, "varValue1", r.StageVariables["var1"])
-
-		return &events.APIGatewayProxyResponse{
-			StatusCode: http.StatusOK,
-			Headers: map[string]string{
-				"Single-Value-Key": "single_value",
-				"Mixed-Value-Key":  "single_value",
+func TestGetHTTPHandler(t *testing.T) {
+	type response struct {
+		statusCode int
+		body       string
+	}
+	tests := map[string]struct {
+		handler http.Handler
+		response
+	}{
+		"GetHTTPHandler with pointer response": {
+			handler: adapter.GetHTTPHandler(
+				func(r events.APIGatewayProxyRequest) (any, error) {
+					handlerAssertions(t, &r)
+					response := mockHandlerResponse()
+					return &response, nil
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"},
+			),
+			response: response{
+				statusCode: http.StatusOK,
+				body:       "response_body",
 			},
-			MultiValueHeaders: map[string][]string{
-				"Multi-Value-Key": {"multi_value_1", "multi_value_2"},
-				"Mixed-Value-Key": {"multi_value_1", "multi_value_2"},
+		},
+		"GetHTTPHandler without pointer response": {
+			handler: adapter.GetHTTPHandler(func(r events.APIGatewayProxyRequest) (any, error) {
+				handlerAssertions(t, &r)
+				return mockHandlerResponse(), nil
+			}, "/users/{userId}", map[string]string{"var1": "varValue1"},
+			),
+			response: response{
+				statusCode: http.StatusOK,
+				body:       "response_body",
 			},
-			Body: "response_body",
-		}, nil
+		},
+		"GetHTTPHandler with invalid response": {
+			handler: adapter.GetHTTPHandler(func(r events.APIGatewayProxyRequest) (any, error) {
+				handlerAssertions(t, &r)
+				return "", nil
+			}, "/users/{userId}", map[string]string{"var1": "varValue1"},
+			),
+			response: response{
+				statusCode: http.StatusInternalServerError,
+				body:       "error",
+			},
+		},
+		"GetHTTPHandlerWithContext with pointer response": {
+			handler: adapter.GetHTTPHandlerWithContext(
+				func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
+					handlerAssertions(t, &r)
+					resp := mockHandlerResponse()
+					return &resp, nil
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}),
+			response: response{
+				statusCode: http.StatusOK,
+				body:       "response_body",
+			},
+		},
+		"GetHTTPHandlerWithContext without pointer response": {
+			handler: adapter.GetHTTPHandlerWithContext(
+				func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
+					handlerAssertions(t, &r)
+					return mockHandlerResponse(), nil
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}),
+			response: response{
+				statusCode: http.StatusOK,
+				body:       "response_body",
+			},
+		},
+		"GetHTTPHandlerWithContext with invalid response": {
+			handler: adapter.GetHTTPHandlerWithContext(
+				func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
+					return "", nil
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}),
+			response: response{
+				statusCode: http.StatusInternalServerError,
+				body:       "error",
+			},
+		},
 	}
 
-	httpHandler := GetHttpHandler(handler, "/users/{userId}", map[string]string{"var1": "varValue1"})
-	testServer := httptest.NewServer(httpHandler)
-	defer testServer.Close()
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			testServer := httptest.NewServer(test.handler)
+			defer testServer.Close()
 
-	res, err := http.Post(testServer.URL+"/users/123?abc=123", "application/json", strings.NewReader("req_body"))
+			uri := testServer.URL + "/users/123?abc=123"
+			req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, uri, strings.NewReader("req_body"))
+			assert.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			res, resErr := http.DefaultClient.Do(req)
+			assert.NoError(t, resErr)
+			defer func() {
+				assert.NoError(t, req.Body.Close())
+			}()
 
-	assert.Nil(t, err)
-	assert.Equal(t, 200, res.StatusCode)
-	assert.Equal(t, []string{"single_value"}, res.Header["Single-Value-Key"])
-	assert.Equal(t, []string{"multi_value_1", "multi_value_2"}, res.Header["Multi-Value-Key"])
-	assert.Equal(t, []string{"single_value", "multi_value_1", "multi_value_2"}, res.Header["Mixed-Value-Key"])
+			assert.Equal(t, test.response.statusCode, res.StatusCode)
+			if test.response.statusCode == http.StatusOK {
+				assert.Equal(t, []string{"single_value"}, res.Header["Single-Value-Key"])
+				assert.Equal(t, []string{"multi_value_1", "multi_value_2"}, res.Header["Multi-Value-Key"])
+				assert.Equal(t, []string{"single_value", "multi_value_1", "multi_value_2"}, res.Header["Mixed-Value-Key"])
+			}
 
-	body, err := ioutil.ReadAll(res.Body)
-	assert.Nil(t, err)
-	assert.Equal(t, "response_body", string(body))
-}
-
-func TestGetHttpHandlerWithContext(t *testing.T) {
-	handler := func(ctx context.Context, r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
-		assert.Equal(t, "POST", r.HTTPMethod)
-		assert.Equal(t, "/users/123", r.Path)
-		assert.Equal(t, "123", r.PathParameters["userId"])
-		assert.Equal(t, "123", r.QueryStringParameters["abc"])
-		assert.Equal(t, "123", r.MultiValueQueryStringParameters["abc"][0])
-		assert.Equal(t, "application/json", r.Headers["Content-Type"])
-		assert.Equal(t, "application/json", r.MultiValueHeaders["Content-Type"][0])
-		assert.Equal(t, "req_body", r.Body)
-		assert.Equal(t, "varValue1", r.StageVariables["var1"])
-
-		return &events.APIGatewayProxyResponse{
-			StatusCode: http.StatusOK,
-			Headers: map[string]string{
-				"Single-Value-Key": "single_value",
-				"Mixed-Value-Key":  "single_value",
-			},
-			MultiValueHeaders: map[string][]string{
-				"Multi-Value-Key": {"multi_value_1", "multi_value_2"},
-				"Mixed-Value-Key": {"multi_value_1", "multi_value_2"},
-			},
-			Body: "response_body",
-		}, nil
+			body, err := io.ReadAll(res.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, test.response.body, string(body))
+		})
 	}
-
-	httpHandler := GetHttpHandlerWithContext(handler, "/users/{userId}", map[string]string{"var1": "varValue1"})
-	testServer := httptest.NewServer(httpHandler)
-	defer testServer.Close()
-
-	res, err := http.Post(testServer.URL+"/users/123?abc=123", "application/json", strings.NewReader("req_body"))
-
-	assert.Nil(t, err)
-	assert.Equal(t, 200, res.StatusCode)
-	assert.Equal(t, []string{"single_value"}, res.Header["Single-Value-Key"])
-	assert.Equal(t, []string{"multi_value_1", "multi_value_2"}, res.Header["Multi-Value-Key"])
-	assert.Equal(t, []string{"single_value", "multi_value_1", "multi_value_2"}, res.Header["Mixed-Value-Key"])
-
-	body, err := ioutil.ReadAll(res.Body)
-	assert.Nil(t, err)
-	assert.Equal(t, "response_body", string(body))
-}
-
-func TestGetHttpHandler_Error(t *testing.T) {
-	handler := func(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
-		return &events.APIGatewayProxyResponse{}, assert.AnError
-	}
-
-	httpHandler := GetHttpHandler(handler, "/", nil)
-	testServer := httptest.NewServer(httpHandler)
-	defer testServer.Close()
-
-	res, err := http.Post(testServer.URL, "application/json", strings.NewReader("req_body"))
-
-	assert.Nil(t, err)
-	assert.Equal(t, 500, res.StatusCode)
-
-	body, err := ioutil.ReadAll(res.Body)
-	assert.Nil(t, err)
-	assert.Equal(t, "error", string(body))
 }
 
 func TestParseParams(t *testing.T) {
-	testCases := map[string]struct {
+	tests := map[string]struct {
 		pathPattern    string
 		path           string
 		expectedParams map[string]string
@@ -157,10 +162,53 @@ func TestParseParams(t *testing.T) {
 		},
 	}
 
-	for name, tc := range testCases {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			params := parsePathParams(tc.pathPattern, tc.path)
-			assert.Equal(t, tc.expectedParams, params)
+			testServer := httptest.NewServer(adapter.GetHTTPHandler(
+				func(r events.APIGatewayProxyRequest) (any, error) {
+					return mockHandlerResponse(), nil
+				}, test.pathPattern, nil,
+			))
+			defer testServer.Close()
+
+			uri := testServer.URL + test.path
+			req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, uri, strings.NewReader("req_body"))
+			assert.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			res, resErr := http.DefaultClient.Do(req)
+			assert.NoError(t, resErr)
+			defer func() {
+				assert.NoError(t, req.Body.Close())
+			}()
+
+			assert.Equal(t, test.path, res.Request.URL.Path)
 		})
 	}
+}
+
+func mockHandlerResponse() events.APIGatewayProxyResponse {
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers: map[string]string{
+			"Single-Value-Key": "single_value",
+			"Mixed-Value-Key":  "single_value",
+		},
+		MultiValueHeaders: map[string][]string{
+			"Multi-Value-Key": {"multi_value_1", "multi_value_2"},
+			"Mixed-Value-Key": {"multi_value_1", "multi_value_2"},
+		},
+		Body: "response_body",
+	}
+}
+
+func handlerAssertions(t *testing.T, r *events.APIGatewayProxyRequest) {
+	assert.Equal(t, "POST", r.HTTPMethod)
+	assert.Equal(t, "/users/123", r.Path)
+	assert.Equal(t, "123", r.PathParameters["userId"])
+	assert.Equal(t, "123", r.QueryStringParameters["abc"])
+	assert.Equal(t, "123", r.MultiValueQueryStringParameters["abc"][0])
+	assert.Equal(t, "application/json", r.Headers["Content-Type"])
+	assert.Equal(t, "application/json", r.MultiValueHeaders["Content-Type"][0])
+	assert.Equal(t, "req_body", r.Body)
+	assert.Equal(t, "varValue1", r.StageVariables["var1"])
 }

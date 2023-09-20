@@ -17,11 +17,11 @@ package main
 
 import (
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/gaw508/lambda-proxy-http-adapter"
+	"github.com/jfallis/lambda-proxy-http-adapter"
 )
 
 func main() {
-	httpHandler := lambda_proxy_http_adapter.GetHttpHandler(apiGatewayProxyHandler, "/", nil)
+	httpHandler := lambdaproxyhttpadapter.GetHttpHandler(apiGatewayProxyHandler, "/", nil)
 	...
 }
 
@@ -41,11 +41,11 @@ package main
 
 import (
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/gaw508/lambda-proxy-http-adapter"
+	"github.com/jfallis/lambda-proxy-http-adapter"
 )
 
 func main() {
-	httpHandler := lambda_proxy_http_adapter.GetHttpHandler(apiGatewayProxyHandler, "/users/{userId}", nil)
+	httpHandler := lambdaproxyhttpadapter.GetHttpHandler(apiGatewayProxyHandler, "/users/{userId}", nil)
 	...
 }
 
@@ -64,11 +64,11 @@ package main
 
 import (
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/gaw508/lambda-proxy-http-adapter"
+	"github.com/jfallis/lambda-proxy-http-adapter"
 )
 
 func main() {
-	httpHandler := lambda_proxy_http_adapter.GetHttpHandler(apiGatewayProxyHandler, "/", map[string]string{"var1": "var1value"})
+	httpHandler := lambdaproxyhttpadapter.GetHttpHandler(apiGatewayProxyHandler, "/", map[string]string{"var1": "var1value"})
 	...
 }
 
