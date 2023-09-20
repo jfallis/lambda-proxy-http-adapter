@@ -1,4 +1,4 @@
-module github.com/gaw508/lambda-proxy-http-adapter
+module github.com/jfallis/lambda-proxy-http-adapter
 
 go 1.13
 
