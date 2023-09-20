@@ -1,43 +1,44 @@
-package lambda_proxy_http_adapter
+package lambdaproxyhttpadapter
 
 import (
 	"context"
-	"io/ioutil"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/gorilla/reverse"
 )
 
-type APIGatewayProxyHandler func(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error)
+type APIGatewayProxyHandler func(r events.APIGatewayProxyRequest) (any, error)
 
-func GetHttpHandler(
+type APIGatewayProxyHandlerWithContext func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error)
+
+func GetHTTPHandler(
 	lambdaHandler APIGatewayProxyHandler,
 	resourcePathPattern string,
 	stageVariables map[string]string,
 ) http.Handler {
-	return getHttpHandler(func(ctx context.Context, r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+	return getHTTPHandler(func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
 		return lambdaHandler(r)
 	}, resourcePathPattern, stageVariables)
 }
 
-type APIGatewayProxyHandlerWithContext func(ctx context.Context, r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error)
-
-func GetHttpHandlerWithContext(
+func GetHTTPHandlerWithContext(
 	lambdaHandler APIGatewayProxyHandlerWithContext,
 	resourcePathPattern string,
 	stageVariables map[string]string,
 ) http.Handler {
-	return getHttpHandler(lambdaHandler, resourcePathPattern, stageVariables)
+	return getHTTPHandler(lambdaHandler, resourcePathPattern, stageVariables)
 }
 
-func getHttpHandler(
+func getHTTPHandler(
 	lambdaHandler APIGatewayProxyHandlerWithContext,
 	resourcePathPattern string,
 	stageVariables map[string]string,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			panic(err)
 		}
@@ -62,7 +63,12 @@ func getHttpHandler(
 			return
 		}
 
-		writeResponse(w, proxyResponse)
+		if wErr := writeResponse(w, proxyResponse); wErr != nil {
+			// write a generic error, the same as API GW would if an error was returned by handler
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`error`))
+			return
+		}
 	})
 }
 
@@ -76,7 +82,7 @@ func singleValue(multiValueMap map[string][]string) map[string]string {
 	return singleValueMap
 }
 
-func parsePathParams(pathPattern string, path string) map[string]string {
+func parsePathParams(pathPattern, path string) map[string]string {
 	re, err := reverse.NewGorillaPath(pathPattern, false)
 	if err != nil {
 		return map[string]string{}
@@ -94,17 +100,27 @@ func parsePathParams(pathPattern string, path string) map[string]string {
 	return params
 }
 
-func writeResponse(w http.ResponseWriter, proxyResponse *events.APIGatewayProxyResponse) {
-	for k, v := range proxyResponse.Headers {
+func writeResponse(w http.ResponseWriter, proxyResponse any) error {
+	r, _ := proxyResponse.(*events.APIGatewayProxyResponse)
+	if p, ok := proxyResponse.(events.APIGatewayProxyResponse); ok {
+		r = &p
+	}
+	if r == nil {
+		return errors.New("proxy response is nil")
+	}
+
+	for k, v := range r.Headers {
 		w.Header().Add(k, v)
 	}
 
-	for k, vs := range proxyResponse.MultiValueHeaders {
+	for k, vs := range r.MultiValueHeaders {
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
 	}
 
-	w.WriteHeader(proxyResponse.StatusCode)
-	_, _ = w.Write([]byte(proxyResponse.Body))
+	w.WriteHeader(r.StatusCode)
+	_, _ = w.Write([]byte(r.Body))
+
+	return nil
 }
