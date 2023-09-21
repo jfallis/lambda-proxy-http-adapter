@@ -18,24 +18,32 @@ func GetHTTPHandler(
 	lambdaHandler APIGatewayProxyHandler,
 	resourcePathPattern string,
 	stageVariables map[string]string,
+	proxyRequestCtx *events.APIGatewayProxyRequestContext,
 ) http.Handler {
-	return getHTTPHandler(func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
-		return lambdaHandler(r)
-	}, resourcePathPattern, stageVariables)
+	return getHTTPHandler(
+		func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
+			return lambdaHandler(r)
+		},
+		resourcePathPattern,
+		stageVariables,
+		proxyRequestCtx,
+	)
 }
 
 func GetHTTPHandlerWithContext(
 	lambdaHandler APIGatewayProxyHandlerWithContext,
 	resourcePathPattern string,
 	stageVariables map[string]string,
+	proxyRequestCtx *events.APIGatewayProxyRequestContext,
 ) http.Handler {
-	return getHTTPHandler(lambdaHandler, resourcePathPattern, stageVariables)
+	return getHTTPHandler(lambdaHandler, resourcePathPattern, stageVariables, proxyRequestCtx)
 }
 
 func getHTTPHandler(
 	lambdaHandler APIGatewayProxyHandlerWithContext,
 	resourcePathPattern string,
 	stageVariables map[string]string,
+	proxyRequestCtx *events.APIGatewayProxyRequestContext,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -43,18 +51,10 @@ func getHTTPHandler(
 			panic(err)
 		}
 
-		proxyResponse, err := lambdaHandler(r.Context(), events.APIGatewayProxyRequest{
-			Resource:                        resourcePathPattern,
-			Path:                            r.URL.Path,
-			HTTPMethod:                      r.Method,
-			Headers:                         singleValue(r.Header),
-			MultiValueHeaders:               r.Header,
-			QueryStringParameters:           singleValue(r.URL.Query()),
-			MultiValueQueryStringParameters: r.URL.Query(),
-			PathParameters:                  parsePathParams(resourcePathPattern, r.URL.Path),
-			StageVariables:                  stageVariables,
-			Body:                            string(body),
-		})
+		proxyResponse, err := lambdaHandler(
+			r.Context(),
+			APIGatewayProxyRequestAdaptor(r, string(body), resourcePathPattern, stageVariables, proxyRequestCtx),
+		)
 
 		if err != nil {
 			// write a generic error, the same as API GW would if an error was returned by handler
@@ -70,6 +70,31 @@ func getHTTPHandler(
 			return
 		}
 	})
+}
+
+func APIGatewayProxyRequestAdaptor(
+	r *http.Request,
+	body,
+	resourcePathPattern string,
+	stageVariables map[string]string,
+	requestContext *events.APIGatewayProxyRequestContext,
+) events.APIGatewayProxyRequest {
+	if requestContext == nil {
+		requestContext = new(events.APIGatewayProxyRequestContext)
+	}
+	return events.APIGatewayProxyRequest{
+		Resource:                        resourcePathPattern,
+		Path:                            r.URL.Path,
+		HTTPMethod:                      r.Method,
+		Headers:                         singleValue(r.Header),
+		MultiValueHeaders:               r.Header,
+		QueryStringParameters:           singleValue(r.URL.Query()),
+		MultiValueQueryStringParameters: r.URL.Query(),
+		PathParameters:                  parsePathParams(resourcePathPattern, r.URL.Path),
+		StageVariables:                  stageVariables,
+		RequestContext:                  *requestContext,
+		Body:                            body,
+	}
 }
 
 func singleValue(multiValueMap map[string][]string) map[string]string {

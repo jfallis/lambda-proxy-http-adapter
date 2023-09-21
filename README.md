@@ -1,12 +1,12 @@
 # Lambda Proxy HTTP Adapter
 
-[![Build Status](https://travis-ci.org/gaw508/lambda-proxy-http-adapter.svg?branch=master)](https://travis-ci.org/gaw508/lambda-proxy-http-adapter)
+[![Build Status](https://travis-ci.org/jfallis/lambda-proxy-http-adapter.svg?branch=master)](https://travis-ci.org/jfallis/lambda-proxy-http-adapter)
 
 Wrap your API Gateway Proxy Lambda handlers in a go net/http handler. Useful to make the Lambda Proxy handlers
 compatible with the huge amount of tooling that already exists for net/http.
 
 This adapter will work for many use cases, but was built specifically with https://github.com/steinfletcher/apitest in
-mind. This adapter allows you to write apitests for your AWS API Gateway Proxy Lambda applications.
+mind. This adapter allows you to write API tests for your AWS API Gateway Proxy Lambda applications.
 
 ## Usage
 
@@ -21,11 +21,11 @@ import (
 )
 
 func main() {
-	httpHandler := lambdaproxyhttpadapter.GetHttpHandler(apiGatewayProxyHandler, "/", nil)
+	httpHandler := lambdaproxyhttpadapter.GetHTTPHandler(apiGatewayProxyHandler, "/", nil, nil)
 	...
 }
 
-func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (any, error) {
 	...
 }
 ```
@@ -45,11 +45,11 @@ import (
 )
 
 func main() {
-	httpHandler := lambdaproxyhttpadapter.GetHttpHandler(apiGatewayProxyHandler, "/users/{userId}", nil)
+	httpHandler := lambdaproxyhttpadapter.GetHTTPHandler(apiGatewayProxyHandler, "/users/{userId}", nil, nil)
 	...
 }
 
-func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (any, error) {
 	...
 }
 ```
@@ -68,11 +68,11 @@ import (
 )
 
 func main() {
-	httpHandler := lambdaproxyhttpadapter.GetHttpHandler(apiGatewayProxyHandler, "/", map[string]string{"var1": "var1value"})
+	httpHandler := lambdaproxyhttpadapter.GetHTTPHandler(apiGatewayProxyHandler, "/", map[string]string{"var1": "var1value"}, nil)
 	...
 }
 
-func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
+func apiGatewayProxyHandler(r events.APIGatewayProxyRequest) (any, error) {
 	...
 }
 ```
