@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestGetHTTPHandler(t *testing.T) {
 					handlerAssertions(t, &r)
 					response := mockHandlerResponse()
 					return &response, nil
-				}, "/users/{userId}", map[string]string{"var1": "varValue1"},
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}, nil,
 			),
 			response: response{
 				statusCode: http.StatusOK,
@@ -40,7 +41,7 @@ func TestGetHTTPHandler(t *testing.T) {
 			handler: adapter.GetHTTPHandler(func(r events.APIGatewayProxyRequest) (any, error) {
 				handlerAssertions(t, &r)
 				return mockHandlerResponse(), nil
-			}, "/users/{userId}", map[string]string{"var1": "varValue1"},
+			}, "/users/{userId}", map[string]string{"var1": "varValue1"}, nil,
 			),
 			response: response{
 				statusCode: http.StatusOK,
@@ -51,7 +52,7 @@ func TestGetHTTPHandler(t *testing.T) {
 			handler: adapter.GetHTTPHandler(func(r events.APIGatewayProxyRequest) (any, error) {
 				handlerAssertions(t, &r)
 				return "", nil
-			}, "/users/{userId}", map[string]string{"var1": "varValue1"},
+			}, "/users/{userId}", map[string]string{"var1": "varValue1"}, nil,
 			),
 			response: response{
 				statusCode: http.StatusInternalServerError,
@@ -64,7 +65,8 @@ func TestGetHTTPHandler(t *testing.T) {
 					handlerAssertions(t, &r)
 					resp := mockHandlerResponse()
 					return &resp, nil
-				}, "/users/{userId}", map[string]string{"var1": "varValue1"}),
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}, nil,
+			),
 			response: response{
 				statusCode: http.StatusOK,
 				body:       "response_body",
@@ -75,7 +77,8 @@ func TestGetHTTPHandler(t *testing.T) {
 				func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
 					handlerAssertions(t, &r)
 					return mockHandlerResponse(), nil
-				}, "/users/{userId}", map[string]string{"var1": "varValue1"}),
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}, nil,
+			),
 			response: response{
 				statusCode: http.StatusOK,
 				body:       "response_body",
@@ -85,7 +88,8 @@ func TestGetHTTPHandler(t *testing.T) {
 			handler: adapter.GetHTTPHandlerWithContext(
 				func(ctx context.Context, r events.APIGatewayProxyRequest) (any, error) {
 					return "", nil
-				}, "/users/{userId}", map[string]string{"var1": "varValue1"}),
+				}, "/users/{userId}", map[string]string{"var1": "varValue1"}, nil,
+			),
 			response: response{
 				statusCode: http.StatusInternalServerError,
 				body:       "error",
@@ -167,7 +171,7 @@ func TestParseParams(t *testing.T) {
 			testServer := httptest.NewServer(adapter.GetHTTPHandler(
 				func(r events.APIGatewayProxyRequest) (any, error) {
 					return mockHandlerResponse(), nil
-				}, test.pathPattern, nil,
+				}, test.pathPattern, nil, nil,
 			))
 			defer testServer.Close()
 
@@ -184,6 +188,48 @@ func TestParseParams(t *testing.T) {
 			assert.Equal(t, test.path, res.Request.URL.Path)
 		})
 	}
+}
+
+func TestAPIGatewayProxyRequestAdaptor(t *testing.T) {
+	expected := events.APIGatewayProxyRequest{
+		Resource:                        "/resource/path/{patterns}",
+		Path:                            "/resource/path/patternValue",
+		HTTPMethod:                      http.MethodGet,
+		Headers:                         map[string]string{"Content-Type": "application/json"},
+		MultiValueHeaders:               map[string][]string{"Content-Type": {"application/json"}},
+		QueryStringParameters:           map[string]string{"query1": "queryValue1", "query2": "queryValue2"},
+		MultiValueQueryStringParameters: map[string][]string{"query1": {"queryValue1"}, "query2": {"queryValue2"}},
+		PathParameters:                  map[string]string{"patterns": "patternValue"},
+		StageVariables:                  map[string]string{"var1": "varValue1", "var2": "varValue2"},
+		RequestContext: events.APIGatewayProxyRequestContext{
+			RequestID:  "123",
+			Authorizer: map[string]any{"principalId": "valid-user"},
+		},
+		Body: "content",
+	}
+
+	assert.Equal(t, expected, adapter.APIGatewayProxyRequestAdaptor(
+		&http.Request{
+			Method: http.MethodGet,
+			Header: http.Header{
+				"Content-Type": {"application/json"},
+			},
+			URL: &url.URL{
+				Path:     "/resource/path/patternValue",
+				RawQuery: "query1=queryValue1&query2=queryValue2",
+			},
+		},
+		"content",
+		"/resource/path/{patterns}",
+		map[string]string{
+			"var1": "varValue1",
+			"var2": "varValue2",
+		},
+		&events.APIGatewayProxyRequestContext{
+			RequestID:  "123",
+			Authorizer: map[string]any{"principalId": "valid-user"},
+		},
+	))
 }
 
 func mockHandlerResponse() events.APIGatewayProxyResponse {
